@@ -1868,3 +1868,9 @@ app.listen(PORT, async () => {
         process.exit(1);
     }
 });
+/*git
+
+
+git remote add origem https://github.com/guskaxd/bot-ghost.git
+git push -u origin main
+*/
