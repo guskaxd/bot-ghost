@@ -556,10 +556,10 @@ async function startExpirationCheck() {
     const interval = setInterval(async () => {
         console.log(`Iniciando verificação global de expirações às ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
         await checkAllExpirations();
-    }, 3600 * 1000); // Intervalo de 1 hora
+    }, 10 * 60 * 1000); // Intervalo de 10 minutos
 
     expirationCheckInterval.set('global', interval);
-    console.log('Intervalo de verificação global iniciado (1 hora)');
+    console.log('Intervalo de verificação global iniciado (10 minutos)');
 
     // Agendar a primeira verificação para 1 minuto após a inicialização
     console.log('A primeira verificação de expirações foi agendada para daqui a 1 minuto para não sobrecarregar a inicialização.');
@@ -742,89 +742,91 @@ async function checkExpirationNow(userId, expirationDate) {
             }
         }
     }
-
     // Notificação de expiração
-        if (daysLeft <= 0) {
-            console.log(`[Debug] Assinatura de ${userId} expirada. Verificando saldo para renovação automática...`);
-            
-            // Define o custo do plano
-            const CUSTO_PLANO_MENSAL = 300; 
+    if (daysLeft <= 0) {
+        console.log(`[Debug] Assinatura de ${userId} expirada. Verificando saldo para renovação automática...`);
         
-            // Busca o saldo do usuário
-            const balanceDoc = await userBalances.findOne({ userId });
-            const saldoDisponivel = balanceDoc ? balanceDoc.balance : 0;
-        
-            // VERIFICA SE O SALDO É SUFICIENTE
-            if (saldoDisponivel >= CUSTO_PLANO_MENSAL) {
-                console.log(`[Auto-Renovação] Saldo suficiente (R$ ${saldoDisponivel}) para ${userId}. Renovando...`);
-                try {
-                    // 1. Deduzir o saldo do usuário
-                    await userBalances.updateOne({ userId }, { $inc: { balance: -CUSTO_PLANO_MENSAL } });
-        
-                    // 2. Renovar a assinatura por mais 30 dias a partir de AGORA
-                    const newExpirationDate = new Date();
-                    newExpirationDate.setDate(newExpirationDate.getDate() + 30);
-                    await expirationDates.updateOne({ userId }, { $set: { expirationDate: newExpirationDate } });
-                    
-                    // 3. (Opcional, mas recomendado) Enviar um log para os administradores
-                    const logChannel = await guild.channels.fetch(LOGS_BOTS_ID);
-                    if (logChannel) {
-                        const logEmbed = new EmbedBuilder()
-                            .setTitle('🔄 Assinatura Renovada Automaticamente')
-                            .setDescription(`A assinatura de <@${userId}> foi renovada usando o saldo de bônus.`)
-                            .setColor('#00BFFF')
-                            .addFields(
-                                { name: '💰 Saldo Utilizado', value: `R$ ${CUSTO_PLANO_MENSAL.toFixed(2)}` },
-                                { name: '🗓️ Nova Expiração', value: newExpirationDate.toLocaleDateString('pt-BR') }
-                            )
-                            .setTimestamp();
-                        await logChannel.send({ embeds: [logEmbed] });
-                    }
-                    // 4. Notificar o usuário via DM
-                    await member.send({
-                        embeds: [
-                            new EmbedBuilder()
-                                .setTitle('✅ Assinatura Renovada!')
-                                .setDescription(`Olá! Sua assinatura VIP acabou de ser renovada automaticamente por mais 30 dias utilizando seu saldo de bônus.`)
-                                .setColor('#00FF00')
-                                .setTimestamp()
-                        ]
-                    }).catch(err => console.error(`Falha ao enviar DM de auto-renovação para ${userId}:`, err));
-                    // Limpa as notificações de expiração para o próximo ciclo
-                     await notificationSent.deleteMany({ userId });
-                } catch (err) {
-                    console.error(`[Auto-Renovação] Erro crítico ao renovar para ${userId}:`, err);
-                    // Se falhar, talvez seja melhor proceder com a expiração normal
+        // Define o custo do plano
+        const CUSTO_PLANO_MENSAL = 300; 
+    
+        // Busca o saldo do usuário
+        const balanceDoc = await userBalances.findOne({ userId });
+        const saldoDisponivel = balanceDoc ? balanceDoc.balance : 0;
+    
+        // VERIFICA SE O SALDO É SUFICIENTE
+        if (saldoDisponivel >= CUSTO_PLANO_MENSAL) {
+            console.log(`[Auto-Renovação] Saldo suficiente (R$ ${saldoDisponivel}) para ${userId}. Renovando...`);
+            try {
+                // 1. Deduzir o saldo do usuário
+                await userBalances.updateOne({ userId }, { $inc: { balance: -CUSTO_PLANO_MENSAL } });
+    
+                // 2. Renovar a assinatura por mais 30 dias a partir de AGORA
+                const newExpirationDate = new Date();
+                newExpirationDate.setDate(newExpirationDate.getDate() + 30);
+                await expirationDates.updateOne({ userId }, { $set: { expirationDate: newExpirationDate } });
+                
+                // 3. (Opcional, mas recomendado) Enviar um log para os administradores
+                const logChannel = await guild.channels.fetch(LOGS_BOTS_ID);
+                if (logChannel) {
+                    const logEmbed = new EmbedBuilder()
+                        .setTitle('🔄 Assinatura Renovada Automaticamente')
+                        .setDescription(`A assinatura de <@${userId}> foi renovada usando o saldo de bônus.`)
+                        .setColor('#00BFFF')
+                        .addFields(
+                            { name: '💰 Saldo Utilizado', value: `R$ ${CUSTO_PLANO_MENSAL.toFixed(2)}` },
+                            { name: '🗓️ Nova Expiração', value: newExpirationDate.toLocaleDateString('pt-BR') }
+                        )
+                        .setTimestamp();
+                    await logChannel.send({ embeds: [logEmbed] });
                 }
-            } else {
-            console.log(`[Expiração] Saldo insuficiente para ${userId}. Procedendo com a remoção do VIP.`);
+                // 4. Notificar o usuário via DM
+                await member.send({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle('✅ Assinatura Renovada!')
+                            .setDescription(`Olá! Sua assinatura VIP acabou de ser renovada automaticamente por mais 30 dias utilizando seu saldo de bônus.`)
+                            .setColor('#00FF00')
+                            .setTimestamp()
+                    ]
+                }).catch(err => console.error(`Falha ao enviar DM de auto-renovação para ${userId}:`, err));
+                // Limpa as notificações de expiração para o próximo ciclo
+                 await notificationSent.deleteMany({ userId });
+            } catch (err) {
+                console.error(`[Auto-Renovação] Erro crítico ao renovar para ${userId}:`, err);
+                // Se falhar, talvez seja melhor proceder com a expiração normal
+            }
+        } else {
+        console.log(`[Expiração] Saldo insuficiente para ${userId}. Procedendo com a remoção do VIP.`);
         try {
+            // ETAPA 1: TENTAR ATUALIZAR OS CARGOS
             const botMember = await guild.members.fetch(client.user.id);
             const botHighestRole = botMember.roles.highest;
             const vipRole = await guild.roles.fetch(VIP_ROLE_ID);
             const aguardandoRole = await guild.roles.fetch(AGUARDANDO_PAGAMENTO_ROLE_ID);
 
             if (botHighestRole.position <= vipRole.position) {
-                console.error(`Bot não tem permissão para remover VIP (hierarquia insuficiente) para ${userId}`);
+                // Lança um erro para ser pego pelo catch, impedindo a continuação
+                throw new Error(`Bot não tem permissão para remover VIP (hierarquia insuficiente) para ${userId}`);
             } else {
-                await member.roles.remove(VIP_ROLE_ID).catch(err => console.error(`Erro ao remover VIP para ${userId}:`, err));
+                await member.roles.remove(VIP_ROLE_ID);
                 console.log(`VIP removido para ${userId}`);
             }
 
             if (botHighestRole.position <= aguardandoRole.position) {
-                console.error(`Bot não tem permissão para adicionar AGUARDANDO_PAGAMENTO (hierarquia insuficiente) para ${userId}`);
+                // Lança um erro para ser pego pelo catch
+                throw new Error(`Bot não tem permissão para adicionar AGUARDANDO_PAGAMENTO (hierarquia insuficiente) para ${userId}`);
             } else {
-                await member.roles.add(AGUARDANDO_PAGAMENTO_ROLE_ID).catch(err => console.error(`Erro ao adicionar AGUARDANDO_PAGAMENTO para ${userId}:`, err));
+                await member.roles.add(AGUARDANDO_PAGAMENTO_ROLE_ID);
                 console.log(`AGUARDANDO_PAGAMENTO adicionado para ${userId}`);
             }
-        } catch (roleError) {
-            console.error(`Erro ao atualizar papéis após expiração para ${userId}:`, roleError);
-        }
 
-        const channelName = `expiracao-${member.user.username.toLowerCase()}-expirada`;
-        let expirationChannel = guild.channels.cache.find(ch => ch.name === channelName);
+            // CORREÇÃO CRÍTICA: As linhas de exclusão foram movidas para DENTRO do try.
+            // Elas só serão executadas se a atualização de cargos acima for bem-sucedida.
+            await expirationDates.deleteOne({ userId });
+            await notificationSent.deleteMany({ userId });
+            console.log(`Registros de expiração e notificação para ${userId} foram limpos com sucesso.`);
 
-        try {
+            // ETAPA 2: NOTIFICAR O USUÁRIO (só acontece se a Etapa 1 funcionar)
             if (!expirationChannel) {
                 expirationChannel = await guild.channels.create({
                     name: channelName,
@@ -850,14 +852,12 @@ async function checkExpirationNow(userId, expirationDate) {
                 .setColor('#FF0000')
                 .setTimestamp();
 
-            await expirationChannel.send({
-                content: `<@${userId}>`,
-                embeds: [expireEmbed],
-            });
+            await expirationChannel.send({ content: `<@${userId}>`, embeds: [expireEmbed] });
+
             setTimeout(async () => {
                 try {
-                    if (expirationChannel) {
-                        await expirationChannel.delete('Notificação de expiração expirada (12h)');
+                    if (expirationChannel && guild.channels.cache.has(expirationChannel.id)) {
+                        await expirationChannel.delete('Notificação de expiração concluída (12h)');
                         console.log(`Canal de expiração ${channelName} deletado para ${userId}`);
                     }
                 } catch (err) {
@@ -865,10 +865,8 @@ async function checkExpirationNow(userId, expirationDate) {
                 }
             }, 12 * 60 * 60 * 1000); // 12 horas
 
-            const notificationsChannel = await guild.channels.fetch(NOTIFICACOES_ID).catch(err => {
-                console.error('Erro ao buscar canal de notificações:', err);
-                return null;
-            });
+            // Notificação pública
+            const notificationsChannel = await guild.channels.fetch(NOTIFICACOES_ID).catch(() => null);
             if (notificationsChannel) {
                 console.log(`Tentando enviar notificação de vencimento para ${userId} no canal ${NOTIFICACOES_ID}`);
                 const publicExpireEmbed = new EmbedBuilder()
@@ -882,16 +880,78 @@ async function checkExpirationNow(userId, expirationDate) {
                     .setColor('#FF0000')
                     .setTimestamp();
                 await notificationsChannel.send({ embeds: [publicExpireEmbed], content: `<@${userId}>` }).catch(err => {
-                    console.error(`Falha ao enviar notificação de vencimento para ${userId} no canal ${NOTIFICACOES_ID}:`, err);
+                console.log(`[FALHA CRÍTICA] Erro ao processar expiração para ${userId}. O registro de expiração NÃO foi removido para que o bot tente novamente no próximo ciclo.`, err);
                 });
             }
         } catch (err) {
             console.error(`Erro ao processar notificação de expiração para ${userId}:`, err);
         }
-
-        await expirationDates.deleteOne({ userId });
-        await notificationSent.deleteMany({ userId });
         }
+    }
+}
+async function auditVipRoles() {
+    console.log('[Audit] Iniciando auditoria de cargos VIP...');
+    try {
+        const guild = await client.guilds.fetch(GUILD_ID);
+        if (!guild) {
+            console.error('[Audit] Guild não encontrada. Auditoria cancelada.');
+            return;
+        }
+
+        const vipRole = await guild.roles.fetch(VIP_ROLE_ID);
+        if (!vipRole) {
+            console.error('[Audit] Cargo VIP não encontrado. Auditoria cancelada.');
+            return;
+        }
+
+        // Força o fetch de todos os membros para garantir que a lista de membros do cargo esteja atualizada
+        await guild.members.fetch();
+        
+        const vipMembers = vipRole.members;
+        console.log(`[Audit] Encontrados ${vipMembers.size} membros com o cargo VIP para verificar.`);
+
+        let unauthorizedMembersCount = 0;
+        const now = new Date();
+
+        for (const [memberId, member] of vipMembers) {
+            const expirationRecord = await expirationDates.findOne({ userId: memberId });
+
+            let shouldRemoveRole = false;
+
+            if (!expirationRecord) {
+                // Caso 1: O usuário tem o cargo VIP, mas não tem NENHUM registro de assinatura no banco.
+                console.log(`[Audit] AÇÃO: Membro ${member.user.tag} (ID: ${memberId}) tem cargo VIP sem registro no DB. Removendo.`);
+                shouldRemoveRole = true;
+            } else {
+                const expirationDate = new Date(expirationRecord.expirationDate);
+                if (expirationDate < now) {
+                    // Caso 2: O usuário tem um registro de assinatura, mas ela já expirou.
+                    console.log(`[Audit] AÇÃO: Membro ${member.user.tag} (ID: ${memberId}) tem assinatura expirada (${expirationDate.toLocaleDateString('pt-BR')}). Removendo.`);
+                    shouldRemoveRole = true;
+                }
+            }
+
+            if (shouldRemoveRole) {
+                unauthorizedMembersCount++;
+                try {
+                    const botMember = await guild.members.fetch(client.user.id);
+                    if (botMember.roles.highest.position > vipRole.position) {
+                        await member.roles.remove(VIP_ROLE_ID);
+                        await member.roles.add(AGUARDANDO_PAGAMENTO_ROLE_ID);
+                        console.log(`[Audit] Cargo VIP removido e 'Aguardando Pagamento' adicionado para ${member.user.tag}.`);
+                    } else {
+                        console.error(`[Audit] FALHA: Bot não tem permissão de hierarquia para gerenciar cargos de ${member.user.tag}.`);
+                    }
+                } catch (err) {
+                    console.error(`[Audit] Erro ao tentar remover cargo de ${member.user.tag}:`, err);
+                }
+            }
+        }
+
+        console.log(`[Audit] Auditoria concluída. ${unauthorizedMembersCount} membro(s) tiveram o cargo VIP removido por inconsistência.`);
+
+    } catch (err) {
+        console.error('[Audit] Erro crítico durante a auditoria de cargos VIP:', err);
     }
 }
 // =================================================================================
@@ -1216,7 +1276,16 @@ client.once('clientReady', async () => {
         SendMessages: false,
         ReadMessageHistory: true,
     });
+    
+    console.log('[Audit] Executando auditoria inicial de cargos VIP...');
+    await auditVipRoles(); // Executa a auditoria uma vez na inicialização
 
+    // Agenda a auditoria para rodar periodicamente
+    setInterval(async () => {
+        await auditVipRoles();
+    }, 6 * 60 * 60 * 1000); // Roda a cada 6 horas
+
+    console.log('[Audit] Auditoria de cargos VIP agendada para rodar a cada 6 horas.');
     const embedRegistro = new EmbedBuilder()
         .setTitle('📝 Registro de Cliente')
         .setDescription('Clique no botão abaixo para se registrar e acessar o canal 🎰➧painel-clientes para adicionar seu saldo.')
@@ -1869,8 +1938,6 @@ app.listen(PORT, async () => {
     }
 });
 /*git
-
-
 git remote add origem https://github.com/guskaxd/bot-ghost.git
 git push -u origin main
 */
