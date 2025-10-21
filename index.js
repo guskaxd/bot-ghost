@@ -890,68 +890,56 @@ async function checkExpirationNow(userId, expirationDate) {
     }
 }
 async function auditVipRoles() {
-    console.log('[Audit] Iniciando auditoria de cargos VIP...');
+    console.log('[Auditoria] Iniciando auditoria de cargos VIP...');
     try {
         const guild = await client.guilds.fetch(GUILD_ID);
-        if (!guild) {
-            console.error('[Audit] Guild não encontrada. Auditoria cancelada.');
-            return;
-        }
-
         const vipRole = await guild.roles.fetch(VIP_ROLE_ID);
         if (!vipRole) {
-            console.error('[Audit] Cargo VIP não encontrado. Auditoria cancelada.');
+            console.error("[Auditoria] Cargo VIP não encontrado. Auditoria cancelada.");
             return;
         }
 
-        // Força o fetch de todos os membros para garantir que a lista de membros do cargo esteja atualizada
-        await guild.members.fetch();
-        
-        const vipMembers = vipRole.members;
-        console.log(`[Audit] Encontrados ${vipMembers.size} membros com o cargo VIP para verificar.`);
+        // Otimização: Busca direta dos membros do cargo, em vez de todos os membros do servidor.
+        // Isso é muito mais rápido e eficiente em servidores grandes.
+        await guild.members.fetch(); // Garante que o cache de membros do cargo esteja atualizado
+        const membersWithVipRole = vipRole.members;
 
-        let unauthorizedMembersCount = 0;
-        const now = new Date();
+        console.log(`[Auditoria] Encontrados ${membersWithVipRole.size} membros com o cargo VIP para verificar.`);
 
-        for (const [memberId, member] of vipMembers) {
+        for (const [memberId, member] of membersWithVipRole) {
+            // Para cada membro, verifica se ele tem uma assinatura válida no banco de dados
             const expirationRecord = await expirationDates.findOne({ userId: memberId });
+            const now = new Date();
 
-            let shouldRemoveRole = false;
-
-            if (!expirationRecord) {
-                // Caso 1: O usuário tem o cargo VIP, mas não tem NENHUM registro de assinatura no banco.
-                console.log(`[Audit] AÇÃO: Membro ${member.user.tag} (ID: ${memberId}) tem cargo VIP sem registro no DB. Removendo.`);
-                shouldRemoveRole = true;
-            } else {
-                const expirationDate = new Date(expirationRecord.expirationDate);
-                if (expirationDate < now) {
-                    // Caso 2: O usuário tem um registro de assinatura, mas ela já expirou.
-                    console.log(`[Audit] AÇÃO: Membro ${member.user.tag} (ID: ${memberId}) tem assinatura expirada (${expirationDate.toLocaleDateString('pt-BR')}). Removendo.`);
-                    shouldRemoveRole = true;
-                }
-            }
-
-            if (shouldRemoveRole) {
-                unauthorizedMembersCount++;
+            if (!expirationRecord || new Date(expirationRecord.expirationDate) <= now) {
+                // Se não houver registro de assinatura ou se ela já expirou...
+                console.warn(`[Auditoria] INCONSISTÊNCIA ENCONTRADA: Usuário ${member.user.tag} (ID: ${memberId}) possui o cargo VIP, mas não tem uma assinatura ativa. Removendo cargo...`);
+                
                 try {
-                    const botMember = await guild.members.fetch(client.user.id);
-                    if (botMember.roles.highest.position > vipRole.position) {
-                        await member.roles.remove(VIP_ROLE_ID);
-                        await member.roles.add(AGUARDANDO_PAGAMENTO_ROLE_ID);
-                        console.log(`[Audit] Cargo VIP removido e 'Aguardando Pagamento' adicionado para ${member.user.tag}.`);
-                    } else {
-                        console.error(`[Audit] FALHA: Bot não tem permissão de hierarquia para gerenciar cargos de ${member.user.tag}.`);
+                    await member.roles.remove(VIP_ROLE_ID);
+                    await member.roles.add(AGUARDANDO_PAGAMENTO_ROLE_ID);
+                    console.log(`[Auditoria] Cargo VIP removido e AGUARDANDO_PAGAMENTO adicionado para ${member.user.tag}.`);
+                    
+                    const logChannel = await guild.channels.fetch(LOGS_BOTS_ID);
+                    if (logChannel) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('🛡️ Auditoria de Segurança')
+                            .setDescription(`O cargo VIP de <@${memberId}> foi removido por inconsistência.`)
+                            .addFields(
+                                { name: 'Motivo', value: 'Não possuía uma assinatura ativa correspondente no banco de dados.' }
+                            )
+                            .setColor('#FFA500')
+                            .setTimestamp();
+                        await logChannel.send({ embeds: [embed] });
                     }
                 } catch (err) {
-                    console.error(`[Audit] Erro ao tentar remover cargo de ${member.user.tag}:`, err);
+                    console.error(`[Auditoria] Falha ao corrigir cargos para ${member.user.tag}:`, err);
                 }
             }
         }
-
-        console.log(`[Audit] Auditoria concluída. ${unauthorizedMembersCount} membro(s) tiveram o cargo VIP removido por inconsistência.`);
-
+        console.log('[Auditoria] Auditoria de cargos VIP concluída.');
     } catch (err) {
-        console.error('[Audit] Erro crítico durante a auditoria de cargos VIP:', err);
+        console.error('[Auditoria] Erro crítico durante a auditoria de cargos VIP:', err);
     }
 }
 // =================================================================================
@@ -1286,6 +1274,7 @@ client.once('clientReady', async () => {
     }, 6 * 60 * 60 * 1000); // Roda a cada 6 horas
 
     console.log('[Audit] Auditoria de cargos VIP agendada para rodar a cada 6 horas.');
+    
     const embedRegistro = new EmbedBuilder()
         .setTitle('📝 Registro de Cliente')
         .setDescription('Clique no botão abaixo para se registrar e acessar o canal 🎰➧painel-clientes para adicionar seu saldo.')
